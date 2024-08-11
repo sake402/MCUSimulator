@@ -1,0 +1,23 @@
+<Project>
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+		<Version>1.0.35</Version>
+		<Authors>Samson A.</Authors>
+		<Company>SIT</Company>
+		<!--PublishTrimmed>true</PublishTrimmed-->
+		<RunAnalyzers>false</RunAnalyzers>
+		<RunAnalyzersDuringLiveAnalisis>false</RunAnalyzersDuringLiveAnalisis>
+		<RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+		<Nullable>enable</Nullable>
+		<RazorLangVersion>8.0</RazorLangVersion>
+		<MetalamaDebugTransformedCode>True</MetalamaDebugTransformedCode>
+		<DefaultNugetVersion>7.0.1</DefaultNugetVersion>
+	</PropertyGroup>
+	
+	<Target Name="RemoveSourceGeneratedFiles" BeforeTargets="CoreCompile">
+	    <ItemGroup>
+	        <Compile Remove="_Generated/**/*.g.cs" />
+	    </ItemGroup>
+	</Target>
+</Project>

@@ -1,0 +1,269 @@
+﻿@inherits BaseComponent
+@page "/"
+@using LivingThing.Core.Frameworks.Common.Data
+@using MCUSimulator.SimulationModels
+
+<div class="hv-10 stack" @onkeypress="Keyed">
+    <div class="flex bdb bg-gray-01">
+        <button class="mdi mdi-folder-outline bg-transparent cl-primary fsz-30"
+                @onclick="OpenExistingProject" title="Open Project"></button>
+        @if (simulator != null)
+        {
+            <button class="mdi mdi-content-save bg-transparent cl-primary fsz-30"
+                    @onclick="SaveProject" title="Save Project"></button>
+            <button class="mdi mdi-refresh bg-transparent cl-primary fsz-30"
+                    @onclick="simulator.Reset" title="Reset"></button>
+            <button disabled="@simulator.Running" class="mdi mdi-debug-step-into bg-transparent cl-primary fsz-30"
+                    @onclick="simulator.StepOne" title="Step Into"></button>
+            <button disabled="@simulator.Running" class="mdi mdi-debug-step-over bg-transparent cl-primary fsz-30"
+                    @onclick="simulator.StepOver" title="Step Over"></button>
+            <button disabled="@simulator.Running" class="mdi mdi-play bg-transparent cl-primary fsz-30"
+                    @onclick="simulator.Run" title="Run"></button>
+            <button disabled="@(!simulator.Running)" class="mdi mdi-pause bg-transparent cl-primary fsz-30"
+                    @onclick="simulator.Pause" title="Run"></button>
+            <div class="fill"></div>
+            @if (mcuBuilder != null)
+            {
+                <button disabled="@simulator.Running" class="mdi mdi-cog bg-transparent cl-primary fsz-30"
+                        @onclick="ConfigureMCU" title="@($"Configure {mcuBuilder.Name}")"></button>
+            }
+            <button disabled="@simulator.Running" class="mdi mdi-plus bg-transparent cl-primary fsz-30"
+                    @onclick="AddModel" title="Add Model"></button>
+            <button disabled="@simulator.Running" title="Apply Model Changes"
+                    class="mdi mdi-refresh bg-transparent cl-primary fsz-30"
+                    @onclick="UpdateModels"></button>
+        }
+    </div>
+    @if (simulator != null)
+    {
+        <div class="flex fill scroll">
+            <div class="pd-2 wx-35 bg-card scroll">
+                <h5 class="mg-0">Registers</h5>
+                <div class="grid gap-03 colm-07">
+                    @foreach (var _reg in simulator.Registers.Registers)
+                    {
+                        var reg = _reg;
+                        <div class="flex">
+                            <span class="nowrap" title="@reg.Name?.ToUpper()">
+                                @reg.Name?.ToUpper()
+                                @* @if (reg is IRandomAccessMemory mem)
+                        {
+                        <text>(@mem.Address.ToString("X2"))</text>
+                        } *@
+                                :
+                            </span>
+                            <input @bind-value:get="@((reg.Value /*& simulator.RegisterMask*/).ToString("X2"))"
+                                   @bind-value:set="@(e=>ParseInputValue(e, reg))"
+                                   class="mgl-a wx-03 pd-0 bd-0 text-right fw-bold cl-text @(reg.Value !=reg.OldValue?"bg-error-01":"bg-transparent")"
+                                   title="@($"Old: {reg.OldValue:X}")" />
+                            @* <b class="mgl-a @(reg.Value !=reg.OldValue?"bg-error-01":"")">
+                    @((reg.Value & simulator.RegisterMask).ToString("X2"))
+                    </b> *@
+                        </div>
+                    }
+                </div>
+                <h5 class="mgt mgb-0">Memory</h5>
+                <table>
+                    <thead>
+                    <th></th>
+                        @for (int i = 0; i < 16; i++)
+                        {
+                        <th>@i.ToString("X2")</th>
+                        }
+                    </thead>
+                    <tbody>
+                        @foreach (var rams in simulator.Registers.SRAM.Where(s => s is not IRegister).GroupBy(r => r.Address / 16))
+                        {
+                            <tr>
+                                <td>@rams.Key.ToString("X2")</td>
+                                @foreach (var ram in rams)
+                                {
+                                    <td class="@(ram.Value != ram.OldValue?"bg-error-01":"")" title="@($"Old: {ram.OldValue:X}")">
+                                        @((ram.Value /*& simulator.RegisterMask*/).ToString("X2"))
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <h5 class="mgt mgb-0">Watch</h5>
+                <table class="wf">
+                    <thead>
+                    <th>Label</th>
+                    <th>Address</th>
+                    <th>Type</th>
+                    <th>Value</th>
+                    <th></th>
+                    </thead>
+                    <tbody>
+                        @if (project?.Watches != null)
+                        {
+                            @foreach (var _watch in project.Watches)
+                            {
+                                var watch = _watch;
+                                <tr @key="watch">
+                                    <td>
+                                        <Editable Enable="true" @bind-Value="watch.Name"></Editable>
+                                    </td>
+                                    <td>
+                                        <Editable Enable="true"
+                                                  @bind-Value="watch.RegisterId"
+                                                  Options="simulator.Registers.Readables.Select(r=>r.Id).GetSelectOptions().GetPager()!"
+                                                  Type="InputType.Select"></Editable>
+                                    </td>
+                                    <td>
+                                        <Editable Enable="true" @bind-Value="watch.Type" Type="InputType.Select"></Editable>
+                                    </td>
+                                    <td>
+                                        @{
+                                            ulong value = watch.Read(simulator);
+                                        }
+                                        @(value.ToString("X"))
+                                    </td>
+                                    <td>
+                                        <button class="bg-transparent mdi mdi-delete" @onclick="()=>project.Watches.Remove(watch)"></button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        <tr>
+                            <td>
+                                <Editable Enable="true" @bind-Value="newWatch.Name"></Editable>
+                            </td>
+                            <td>
+                                <Editable Enable="true"
+                                          @bind-Value="newWatch.RegisterId"
+                                          Options="simulator.Registers.Readables.Select(r=>r.Id).GetSelectOptions().GetPager()!"
+                                          Type="InputType.Select"></Editable>
+                            </td>
+                            <td>
+                                <Editable Enable="true" @bind-Value="newWatch.Type" Type="InputType.Select"></Editable>
+                            </td>
+                            <td>
+                            </td>
+                            <td>
+                                <button class="bg-transparent mdi mdi-plus" @onclick="AddNewWatch"></button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="fill scroll">
+                <ul class="reset">
+                    @foreach (var _ins in simulator.Instructions!)
+                    {
+                        var instruction = _ins;
+                        <li class="flex flex bdb @(!simulator.Running && simulator.InstructionPointer == instruction.Key?"bg-primary-01":"")"
+                            @ref="instructionView[instruction.Key]">
+                            <div class="fw-bold wx-07 bg-error-01 text-right pd-1 flex clickable" @onclick="instruction.Value.ToggleBreakPoint">
+                                <div class="@(!simulator.Running && simulator.InstructionPointer == instruction.Key?"mdi mdi-chevron-right cl-success":"")"></div>
+                                <div class="wx-01 hx-01 round bg-@(instruction.Value.BreakPoint?"error sd ":"transparent") mgy-a mgl-a"></div>
+                                <span class="mgl-a">
+                                    @instruction.Key.ToString("X4")
+                                </span>
+                            </div>
+                            <div class="pd-1">
+                                @instruction.Value
+                            </div>
+                        </li>
+                    }
+                </ul>
+            </div>
+            <div class="wx-3 bg-card pd stack">
+                <div class="fill scroll">
+                    <div class="grid gap-1 colm-07">
+                        @foreach (var _model in simulationModels)
+                        {
+                            var model = _model;
+                            <div class="animate pos-rel bd corner stack clickable @(selectedSimulationModel == model?"bd-primary":"")"
+                                 @onclick="()=>selectedSimulationModel=model">
+                                <button class="pos-abs t-0 r-0 bg-transparent mdi mdi-delete cl-error fade-in-hover"
+                                        @onclick="()=>Remove(model)" @onclick:stopPropagation></button>
+                                <i class="mgx-a fsz-50 @(((ISimulationModelViewProvider)model.Provider!).Icon)"></i>
+                                <span class="mgx-a">@model.Name</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+                @if (selectedSimulationModel != null)
+                {
+                    <div class="bdt pdt mahx-2 scroll" @key="selectedSimulationModel">
+                        <div class="flex">
+                            <Editable class="mg-0 fill" Tag="h4" Enable="true" @bind-Value="selectedSimulationModel.Name">
+                                @selectedSimulationModel.Name
+                                <small>(@selectedSimulationModel.Provider?.Title)</small>
+                            </Editable>
+                            <Button Features="ButtonFeatures.Flat"
+                                    Theme="Theme.Transparent"
+                                    Class="mdi mdi-cogs"
+                                    drawer-class="bg-card pd"
+                                    title="Configure">
+                                <DrawerView Context="_">
+                                    <FormBuilder Model="selectedSimulationModel.Parameter"
+                                                 Features="FormBuilderFeatures.Default|FormBuilderFeatures.Horizontal"
+                                                 Class="mgt"></FormBuilder>
+                                    <EditForm Model="this" Context="__">
+                                        @foreach (var _output in selectedSimulationModel.Outputs)
+                                        {
+                                            var output = _output;
+                                            <div class="pdy flex" @key="output">
+                                                <span class="mgy-a mgr">@output.Key</span>
+                                                <div class="fill"></div>
+                                                <InputEditor Type="InputType.Select"
+                                                             TValue="IWritableMemory"
+                                                             Options="simulator.Registers.Writables.GetSelectOptions().GetPager()"
+                                                             @bind-Value:get="output.Value.ConnectedMemory"
+                                                             @bind-Value:set="v=>output.Value.Connect(v)"></InputEditor>
+                                            </div>
+                                        }
+                                        @foreach (var _input in selectedSimulationModel.Inputs)
+                                        {
+                                            var input = _input;
+                                            <div class="pdy flex" @key="input">
+                                                <span class="mgy-a mgr">@input.Key</span>
+                                                <div class="fill"></div>
+                                                <InputEditor Type="InputType.Select"
+                                                             TValue="IReadableMemory"
+                                                             Options="simulator.Registers.Readables.GetSelectOptions().GetPager()"
+                                                             @bind-Value:get="input.Value.ConnectedMemory"
+                                                             @bind-Value:set="v=>input.Value.Connect(v)"></InputEditor>
+                                            </div>
+                                        }
+                                    </EditForm>
+                                </DrawerView>
+                            </Button>
+                        </div>
+                        <small class="mg-0 op-7 d-block">@selectedSimulationModel.Provider?.Description</small>
+                        @(((ISimulationModelViewProvider)selectedSimulationModel.Provider!).GetView(selectedSimulationModel))
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="flex pd fsz-small">
+            <div class="fill"></div>
+            Cycles: @simulator.StepCycles (@simulator.Clock.CycleToTime(simulator.StepCycles)),
+            Total Cycles: @simulator.TotalCycles (@simulator.Clock.CycleToTime(simulator.TotalCycles))
+        </div>
+    }
+    else
+    {
+        <div class="flex-column fill scroll pd">
+            <h2 class="cl-primary">Welcome to MCU Simulator</h2>
+            <p>MCU Simulator is a highly extensible assembly level emulator to test a Microcontroller code.</p>
+            <h4>Please Select your platform below</h4>
+            <div class="grid colm-4">
+                @foreach (var _builder in MCUFactories)
+                {
+                    var builder = _builder;
+                    <div class="bd bd-primary bdw-2 pd corner flex clickable" @onclick="()=>NewProject(builder)">
+                        <i class="mdi mdi-chip fsz-100 cl-primary"></i>
+                        <div class="mgl">
+                            <h1 class="cl-primary">@builder.Name</h1>
+                            <p class="cl-secondary">@builder.Description</p>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>

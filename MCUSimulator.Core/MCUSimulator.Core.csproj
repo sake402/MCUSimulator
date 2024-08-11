@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\LivingThing\Libraries\LivingThing.Frameworks\LivingThing.Core.Frameworks.Common\LivingThing.Core.Frameworks.Common.csproj" />
+  </ItemGroup>
+
+</Project>

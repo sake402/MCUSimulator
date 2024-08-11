@@ -1,0 +1,124 @@
+@using LivingThing.Core.Frameworks.Client.Components.SVG.FluentBuilder
+@using LivingThing.Core.Frameworks.Common.String
+@inherits BaseComponent
+
+<Themable Context="theme">
+    @{
+        ISVGBuilder? svg = null;
+        const int chartHeight = 50;
+        int w = 300;
+        int h = chartHeight;
+        int minPulseWidth = Model.Collectors.Count > 0 ? Model.Collectors.Min(e => e.Value.MinPulseWidth) : 0;
+        int maxPulseWidth = Model.Collectors.Count > 0 ? Model.Collectors.Min(e => e.Value.MaxPulseWidth) : 0;
+        if (minPulseWidth <= 0)
+            minPulseWidth = 1;
+        if (maxPulseWidth <= 0)
+            maxPulseWidth = 1;
+        int bits = (maxPulseWidth / minPulseWidth);
+        w = 10 * bits;
+        if (w < 300)
+            w = 300;
+        double wPerTime = (double)w / (double)maxPulseWidth;
+        h = chartHeight * Model.Collectors.Count;
+        svg = SVGBuilder.Create(w, h, DimensionUnit.None, proportionalDimensions: true, xOrigin: XOrigin.Left, yOrigin: YOrigin.Bottom)
+        .Attribute("style", $"height:{h}px;width:{w}px");
+        svg.BoxStepY(0, 1, Model.Collectors.Count(), (svg, parallelPatternIndex) =>
+        {
+            var patterns = Model.Collectors.ElementAt(parallelPatternIndex);
+            double yOffset = 0.05;
+            double yHeight = 1 - 0.05;
+            string color = "#00AEFF";
+            color = theme.Data.ChartColors?.ElementAtOrDefault(parallelPatternIndex) ?? color;
+            svg.StrokeColor(color);
+            //first edge is at second data sample
+            int lastTime = patterns.Value.Collected.ElementAtOrDefault(1).Key;
+            int lastBit = patterns.Value.Collected.ElementAtOrDefault(1).Value;
+            double x = 0;
+            double y = yOffset;
+            if (lastBit == 0)
+            {
+                svg.MoveTo(0, y = yOffset);
+            }
+            else
+            {
+                svg.MoveTo(0, y = yHeight);
+            }
+            lock (patterns.Value)
+            {
+                foreach (var (time, bit) in patterns.Value.Collected.Skip(2)
+            //Extend the last collected value to current simulation cycle time
+            .Concat([new KeyValuePair<int, int>(Model.Simulator!.TotalCycles, patterns.Value.Collected.LastOrDefault().Value)]))
+                {
+                    var dTime = time - lastTime;
+                    lastTime = time;
+                    var xWidth = wPerTime * dTime;
+                    xWidth /= w; //scale to 1.0
+                    if (lastBit == 0 && bit == 0)
+                    {
+                        svg.LineTo(x = x + xWidth, y = yOffset).StrokeColor(color);
+                    }
+                    else if (lastBit == 0 && bit != 0)
+                    {
+                        svg.LineTo(x = x + xWidth, y = yOffset).StrokeColor(color);
+                        svg.LineTo(x, y = yHeight).StrokeColor(color);
+                    }
+                    else if (lastBit != 0 && bit == 0)
+                    {
+                        svg.LineTo(x = x + xWidth, y = yHeight).StrokeColor(color);
+                        svg.LineTo(x, y = yOffset).StrokeColor(color);
+                    }
+                    else
+                    {
+                        svg.LineTo(x = x + xWidth, y = yHeight).StrokeColor(color);
+                    }
+                    lastBit = bit;
+                }
+            }
+        });
+    }
+
+    <div class="pos-rel">
+        <button class="pos-abs t-0 r-0 bg-transparent mdi mdi-delete"
+                title="Clear all"
+                @onclick="Model.ClearAll"></button>
+        <div class="scroll-x">
+            @(svg?.Build())
+        </div>
+    </div>
+    <div class="mgy bg-primary-01 pd-2 corner-2">
+        Protocol Decoders
+    </div>
+    <Accordion>
+        @foreach (var _decoder in Decoders)
+        {
+            var decoder = _decoder;
+            var parameters = decoder.GetParameters(Model);
+            <AccordionTab Class="mgt-2">
+                <Title>
+                    <div class="flex">
+                        <span class="fill @(parameters.Enabled?"mdi mdi-check":"")">@decoder.Title</span>
+                        <Button Class="mdi mdi-cog"
+                                Features="ButtonFeatures.Flat" OnClicked="()=>EditDecoder(decoder)"
+                                drawer-class="bg-card pd">
+                        </Button>
+                    </div>
+                </Title>
+                <ChildContent>
+                    @if (parameters.Enabled)
+                    {
+                        var decoded = decoder.Decode(Model);
+                        @if (decoded != null)
+                        {
+                            // <div class=" mahx-2 scroll">
+                                @foreach (var d in decoded)
+                                {
+                                    <div class="bdb pdy-1">@d</div>
+                                }
+                            // </div>
+                        }
+                    }
+                </ChildContent>
+            </AccordionTab>
+        }
+    </Accordion>
+</Themable>
